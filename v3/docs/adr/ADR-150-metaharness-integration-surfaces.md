@@ -1,7 +1,7 @@
 # ADR-150 — MetaHarness Integration Surfaces in `npx ruflo`
 
-**Status**: Proposed
-**Date**: 2026-06-16
+**Status**: Accepted (Phase 1 shipped iters 1–3, Phase 2 partially shipped iters 4–8; SelfEvolvingRouter + KRR retrain remain)
+**Date**: 2026-06-16 (revised 2026-06-16 with implementation notes)
 **Related**: ADR-148 (cost-optimal router lifecycle via `@metaharness/router`), ADR-149 (per-model cost-optimal routing), ADR-026 (3-tier model routing), ADR-097 (federation budget circuit breaker), ADR-124 (optional native dependencies), ADR-144 (agent-authorization-propagation)
 **External reference**: [`ruvnet/agent-harness-generator`](https://github.com/ruvnet/agent-harness-generator) — the upstream that publishes `metaharness` + `@metaharness/*`. Same author (rUv), explicitly designed around ruflo primitives.
 **Research dossier**: published as a gist (linked from the tracking issue) with full graded-evidence sourcing.
@@ -145,6 +145,93 @@ Rejected. Touching the MCP dispatch core affects all 314 tools and is too high-b
 - Should the seed-corpus retraining cadence be ad-hoc (Phase-1) or scheduled (e.g., monthly cron in a Phase-2 follow-up)? Defer to Phase-2 once we see the trajectory volume.
 - Does the `oia-audit` background worker (Phase 2) belong in `ruflo-loop-workers` or in `ruflo-metaharness`? Probably the latter, since the audit output is MetaHarness-specific.
 - How does the architectural constraint's CI gate (the `--ignore-optional` smoke run) interact with the existing `all-plugins-smoke.yml` workflow? Probably a new sibling workflow `no-metaharness-smoke.yml` that re-runs the same matrix with `--ignore-optional`; lighter than adding a second axis to the existing matrix.
+
+## Implementation Notes (revised 2026-06-16)
+
+The integration shipped across eight `/loop` iterations on branch
+`feat/metaharness-integration-research`. Status of each Phase milestone:
+
+### Phase 0 — Measurement spike ✅ DONE (iter 1)
+- Ruflo baseline scorecard captured: harnessFit 82/100, compileConfidence
+  100, taskCoverage 79, toolSafety 100, memoryUsefulness 40 (weakest —
+  track), estCostPerRunUsd $0.048, archetype `typescript-sdk-harness`,
+  template recommendation `vertical:coding`, scaffoldReady true.
+- Ruflo genome: repo_type `node_mcp_ci`, risk_score 0.27 (low),
+  publish_readiness 0.9, mcp_surface `remote`.
+
+### Phase 1 — MVP ✅ DONE (iters 1–3)
+- `plugins/ruflo-metaharness/` with 6 skills (one more than ADR-150
+  originally proposed — `harness-oia-audit` was lifted forward from
+  Phase 2 in iter 7): `harness-score`, `harness-genome`,
+  `harness-mcp-scan`, `harness-threat-model`, `harness-oia-audit`,
+  `harness-mint`.
+- Shared `scripts/_harness.mjs` bridge — single subprocess
+  invocation point, 60s hard timeout, JSON-mode default, graceful
+  degradation via `emitDegradedJsonAndExit`.
+- `npx ruflo metaharness <subcommand>` top-level dispatcher in
+  `v3/@claude-flow/cli/src/commands/metaharness.ts` (iter 3).
+- `metaharness@~0.1.11` and `@metaharness/router@~0.3.2` in
+  optionalDependencies of BOTH `@claude-flow/cli/package.json` and
+  `ruflo/package.json` (iter 3). Tilde pin, not caret — per
+  review-round-1 (upstream had 5 releases in 2.7h).
+- CI workflows (iter 2):
+  - `metaharness-ci.yml` — score, mcp-scan, router-compat jobs
+  - `no-metaharness-smoke.yml` — enforces architectural constraint rule
+    #4 by greping every package.json for non-optional metaharness deps
+    AND drilling each skill with an unresolvable npm registry
+  - `scripts/check-metaharness-compat.mjs` — API-stability tripwire,
+    9/9 against current @metaharness/router@0.3.2
+
+### Phase 2 — Expansion (3 of 4 shipped)
+- ✅ `npx ruflo eject` (iters 4–5) — Phase-2 differentiator wrapping
+  `metaharness --from-existing`. Dry-run default; refuses in-repo
+  target + existing-target overwrites. CI dry-run job in
+  metaharness-ci.yml validates BOTH the plan output AND the safety
+  refusal.
+- ✅ `'harness'` PluginType in plugin registry (iter 6) — schema
+  extension only, zero runtime overhead. `npx ruflo plugins list
+  --type harness` filter works by construction.
+- ✅ `harness-oia-audit` composite worker (iter 7–8) — bundles
+  oia-manifest + threat-model + mcp-scan into one timestamped record;
+  persistence to `metaharness-audit` memory namespace; weekly cron
+  workflow `.github/workflows/oia-audit-weekly.yml` at Sundays 04:17 UTC.
+- 🔄 `SelfEvolvingRouter` parallel-logging — DEFERRED to a follow-up
+  ADR. Promotion criteria from review-round-1 still stand:
+  quality > 2% AND cost < 1% AND latency < 5%.
+
+### Phase-1 item #3 — Real seed corpus retraining 🔄 PENDING
+Requires production trajectory data. The pipeline is wired:
+`CLAUDE_FLOW_ROUTER_TRAJECTORY=1` writes JSONL;
+`scripts/train-bundled-krr.mjs` rebuilds the artifact. The blocker is
+data collection — needs a 50+ decision production sample. Plan: enable
+the recorder on the next merged-to-main release; collect a week of
+real routing data; retrain in a follow-up PR.
+
+### Fleet status (post-iter-8)
+- 33 plugins in `scripts/smoke-all-plugins.mjs` (was 32; +1 for
+  ruflo-metaharness)
+- 19 structural invariants in `plugins/ruflo-metaharness/scripts/smoke.sh`
+- Three fleet audits green (exit-bypass / SKILL.md frontmatter /
+  plugin.json manifest)
+- 117 SKILL.md files across 34 plugins (was 117/32 — adding
+  6 new SKILL.md files from this plugin pushed the count)
+
+### Quote architecture invariant — no static metaharness imports
+
+The single non-test ruflo source file that statically imports a
+`@metaharness/*` package is:
+
+```
+v3/@claude-flow/cli/src/ruvector/neural-router.ts  ← @metaharness/router
+                                                     (dynamic import,
+                                                      triple-gated)
+```
+
+All other ruflo code reaches MetaHarness exclusively through the
+`_harness.mjs` subprocess bridge. The `no-metaharness-smoke.yml`
+workflow continually enforces this with both a static grep (every
+package.json) and a runtime drill (each skill against an unresolvable
+npm registry, asserting graceful degradation).
 
 ## References
 
