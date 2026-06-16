@@ -136,10 +136,22 @@ function runScript(scriptName: string, args: string[]): Promise<{
   });
 }
 
+/**
+ * iter 46 — success-semantic footnote appended to every tool description
+ * so agents reading the registry know how to interpret the return shape.
+ * Reflects the iter-44 fix: `success` derives from exitCode, not from the
+ * degraded marker. Three observable cases an agent can branch on.
+ */
+const MCP_SUCCESS_SEMANTIC =
+  '[Return shape: {success, data, degraded, exitCode}. success===true iff exitCode===0 ' +
+  '(includes graceful-degradation path where dep is absent — check degraded for that). ' +
+  'success===false with exitCode===1 = intentional alert exit (read data.alert.triggered). ' +
+  'success===false with exitCode===2 = input error (data is null).]';
+
 export const metaharnessTools: MCPTool[] = [
   {
     name: 'metaharness_score',
-    description: 'ADR-150 — 5-dimension harness readiness scorecard from `metaharness score <path>` (harnessFit / compileConfidence / taskCoverage / toolSafety / memoryUsefulness + estCostPerRunUsd). Pure-read subprocess; graceful degradation when metaharness optional dep absent. Use BEFORE recommending the user run `ruflo metaharness mint` so you have an evidence-based readiness signal.',
+    description: 'ADR-150 — 5-dimension harness readiness scorecard from `metaharness score <path>` (harnessFit / compileConfidence / taskCoverage / toolSafety / memoryUsefulness + estCostPerRunUsd). Pure-read subprocess; graceful degradation when metaharness optional dep absent. Use BEFORE recommending the user run `ruflo metaharness mint` so you have an evidence-based readiness signal. ' + MCP_SUCCESS_SEMANTIC,
     category: 'metaharness',
     inputSchema: {
       type: 'object',
@@ -158,7 +170,7 @@ export const metaharnessTools: MCPTool[] = [
   },
   {
     name: 'metaharness_genome',
-    description: 'ADR-150 — 7-section categorical readiness report from `metaharness genome <path>` (repo_type / agent_topology / risk_score / mcp_surface / test_confidence / publish_readiness). Pairs with metaharness_score for the full readiness view — score is numeric, genome is categorical.',
+    description: 'ADR-150 — 7-section categorical readiness report from `metaharness genome <path>` (repo_type / agent_topology / risk_score / mcp_surface / test_confidence / publish_readiness). Pairs with metaharness_score for the full readiness view — score is numeric, genome is categorical. ' + MCP_SUCCESS_SEMANTIC,
     category: 'metaharness',
     inputSchema: {
       type: 'object',
@@ -177,7 +189,7 @@ export const metaharnessTools: MCPTool[] = [
   },
   {
     name: 'metaharness_mcp_scan',
-    description: 'ADR-150 — static security scan of `.mcp/servers.json` + `.harness/claims.json` via `harness mcp-scan <path>`. Reads only; no dispatch. Use before exposing a new MCP server config to humans/agents.',
+    description: 'ADR-150 — static security scan of `.mcp/servers.json` + `.harness/claims.json` via `harness mcp-scan <path>`. Reads only; no dispatch. Use before exposing a new MCP server config to humans/agents. ' + MCP_SUCCESS_SEMANTIC,
     category: 'metaharness',
     inputSchema: {
       type: 'object',
@@ -195,7 +207,7 @@ export const metaharnessTools: MCPTool[] = [
   },
   {
     name: 'metaharness_threat_model',
-    description: 'ADR-150 — enterprise-grade threat model from `harness threat-model <path>`. Returns worst-severity verdict (clean/low/medium/high) + categorized findings suitable for sharing with infosec.',
+    description: 'ADR-150 — enterprise-grade threat model from `harness threat-model <path>`. Returns worst-severity verdict (clean/low/medium/high) + categorized findings suitable for sharing with infosec. ' + MCP_SUCCESS_SEMANTIC,
     category: 'metaharness',
     inputSchema: {
       type: 'object',
@@ -213,7 +225,7 @@ export const metaharnessTools: MCPTool[] = [
   },
   {
     name: 'metaharness_oia_audit',
-    description: 'ADR-150 — composite weekly audit. Bundles oia-manifest + threat-model + mcp-scan into one timestamped record persisted to `metaharness-audit` memory namespace (or --dry-run to skip persistence). Designed for periodic drift detection.',
+    description: 'ADR-150 — composite weekly audit. Bundles oia-manifest + threat-model + mcp-scan into one timestamped record persisted to `metaharness-audit` memory namespace (or --dry-run to skip persistence). Designed for periodic drift detection. ' + MCP_SUCCESS_SEMANTIC,
     category: 'metaharness',
     inputSchema: {
       type: 'object',
@@ -234,7 +246,7 @@ export const metaharnessTools: MCPTool[] = [
   },
   {
     name: 'metaharness_audit_list',
-    description: 'ADR-150 iter 16 — list timestamped records from the `metaharness-audit` memory namespace. Use this BEFORE metaharness_audit_trend to discover which audit keys exist to diff.',
+    description: 'ADR-150 iter 16 — list timestamped records from the `metaharness-audit` memory namespace. Use this BEFORE metaharness_audit_trend to discover which audit keys exist to diff. ' + MCP_SUCCESS_SEMANTIC,
     category: 'metaharness',
     inputSchema: {
       type: 'object',
@@ -253,7 +265,7 @@ export const metaharnessTools: MCPTool[] = [
   },
   {
     name: 'metaharness_similarity',
-    description: 'ADR-152 §3.1 — weighted similarity between two harness fingerprints (genome + score JSON). Returns overall ∈ [0,1] plus per-component breakdown (cosine over 9 numerics, categorical over 4 enums, jaccard over agent_topology). Pure-TS, zero `@metaharness/*` dep. Use to (a) rank candidate templates against a target repo, (b) decide fork-vs-scaffold, (c) feed ADR-151 §3.2 Recommender / §3.3 Drift / §3.5 Plugin Compat.',
+    description: 'ADR-152 §3.1 — weighted similarity between two harness fingerprints (genome + score JSON). Returns overall ∈ [0,1] plus per-component breakdown (cosine over 9 numerics, categorical over 4 enums, jaccard over agent_topology). Pure-TS, zero `@metaharness/*` dep. Use to (a) rank candidate templates against a target repo, (b) decide fork-vs-scaffold, (c) feed ADR-151 §3.2 Recommender / §3.3 Drift / §3.5 Plugin Compat. ' + MCP_SUCCESS_SEMANTIC,
     category: 'metaharness',
     inputSchema: {
       type: 'object',
@@ -280,22 +292,29 @@ export const metaharnessTools: MCPTool[] = [
   },
   {
     name: 'metaharness_audit_trend',
-    description: 'ADR-150 iter 15 — diff two oia-audit records (drift detection). Pulls baseline + current snapshots from the `metaharness-audit` memory namespace and surfaces composite worst-severity delta + per-component status change + introduced/cleared findings.',
+    description: 'ADR-150 iter 15 — diff two oia-audit records (drift detection). Accepts EITHER memory keys (run metaharness_audit_list first to discover them) OR direct file paths (useful for diffing CI artifacts). Surfaces composite worst-severity delta + per-component status change + introduced/cleared findings + (iter 38) ADR-152 §3.1 structural distance when both records carry a fingerprint. ' + MCP_SUCCESS_SEMANTIC,
     category: 'metaharness',
     inputSchema: {
       type: 'object',
       properties: {
-        baselineKey: { type: 'string', description: 'Memory key for the older audit (run metaharness_audit_list first to discover keys)' },
-        currentKey: { type: 'string', description: 'Memory key for the newer audit' },
+        baselineKey: { type: 'string', description: 'Memory key for the older audit (mutually exclusive with baselineFile)' },
+        currentKey: { type: 'string', description: 'Memory key for the newer audit (mutually exclusive with currentFile)' },
+        baselineFile: { type: 'string', description: 'iter 46 — file path to older audit JSON (mutually exclusive with baselineKey)' },
+        currentFile: { type: 'string', description: 'iter 46 — file path to newer audit JSON (mutually exclusive with currentKey)' },
         alertOnWorsening: { type: 'boolean', description: 'Set tool.alert.triggered when composite worst severity worsened', default: false },
+        alertOnDistanceBelow: { type: 'number', description: 'iter 38 — set tool.alert.triggered when structural similarity falls below N (uses fingerprint field added in iter 38; older records emit verdict=unavailable)' },
       },
-      required: ['baselineKey', 'currentKey'],
+      // No required[] — caller picks key OR file inputs. The script
+      // emits a graceful degraded payload if neither is supplied.
     },
     handler: async (input) => {
-      const baselineKey = input.baselineKey as string;
-      const currentKey = input.currentKey as string;
-      const args = ['--baseline-key', baselineKey, '--current-key', currentKey];
+      const args: string[] = [];
+      if (input.baselineKey) args.push('--baseline-key', String(input.baselineKey));
+      if (input.currentKey) args.push('--current-key', String(input.currentKey));
+      if (input.baselineFile) args.push('--baseline', String(input.baselineFile));
+      if (input.currentFile) args.push('--current', String(input.currentFile));
       if (input.alertOnWorsening === true) args.push('--alert-on-worsening');
+      if (input.alertOnDistanceBelow !== undefined) args.push('--alert-on-distance-below', String(input.alertOnDistanceBelow));
       const r = await runScript('audit-trend.mjs', args);
       return { success: r.success, data: r.json, degraded: r.degraded, exitCode: r.exitCode };
     },

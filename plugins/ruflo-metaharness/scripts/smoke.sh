@@ -191,6 +191,22 @@ grep -q "execCli(\[\s*'-y'\s*,\s*'metaharness@latest'" "$F" 2>/dev/null || \
 grep -q "cwd: opts" "$F" || miss="$miss no-cwd-passthrough"
 [[ -z "$miss" ]] && ok || bad "$miss"
 
+step "17z9. MCP success-semantic footnote + audit_trend file inputs (iter 46)"
+miss=""
+WRAPPER="$ROOT/../../v3/@claude-flow/cli/src/mcp-tools/metaharness-tools.ts"
+# Success-semantic constant declared + appended to 8 descriptions = 9 occurrences
+COUNT=$(grep -c "MCP_SUCCESS_SEMANTIC" "$WRAPPER" 2>/dev/null; true)
+[[ "$COUNT" == "9" ]] || miss="$miss footnote-count:$COUNT-expected-9"
+# audit_trend now exposes baselineFile / currentFile
+grep -q "baselineFile" "$WRAPPER" 2>/dev/null || miss="$miss no-baseline-file"
+grep -q "currentFile" "$WRAPPER" 2>/dev/null || miss="$miss no-current-file"
+# alertOnDistanceBelow exposed (iter 38 distance gate)
+grep -q "alertOnDistanceBelow" "$WRAPPER" 2>/dev/null || miss="$miss no-distance-input"
+# Phase 4 has the file-input assertion
+T="$ROOT/scripts/test-mcp-tools.mjs"
+grep -q "audit_trend file-input path: success === true" "$T" 2>/dev/null || miss="$miss no-file-input-assert"
+[[ -z "$miss" ]] && ok || bad "$miss"
+
 step "17z8. ruflo doctor checks the integration layer, not just upstream (iter 45)"
 miss=""
 DOC="$ROOT/../../v3/@claude-flow/cli/src/commands/doctor.ts"

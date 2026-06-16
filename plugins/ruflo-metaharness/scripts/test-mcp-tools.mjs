@@ -256,6 +256,16 @@ async function main() {
     // This is a real wrapper bug (success should not be true when
     // exit!=0 AND no JSON came back), tracked separately. Asserting
     // current behavior here protects against silent semantic shifts.
+    // iter 46 — file-input path. audit_trend now accepts baselineFile/currentFile.
+    const rFiles = await trendTool.handler({ baselineFile: basePath, currentFile: currPath });
+    assert(rFiles.success === true,
+      'audit_trend file-input path: success === true (iter 46)');
+    assert(rFiles.exitCode === 0, 'audit_trend file-input path: exitCode === 0');
+    assert(typeof rFiles.data?.delta === 'object',
+      'audit_trend file-input path: data.delta object present');
+    assert(rFiles.data?.delta?.structuralDistance?.verdict === 'near-identical',
+      `audit_trend file-input path: identical fingerprints → near-identical (got ${rFiles.data?.delta?.structuralDistance?.verdict})`);
+
     const r = await trendTool.handler({ baselineKey: 'missing-X', currentKey: 'missing-Y' });
     assert(r.exitCode === 2,
       'audit_trend bad-keys path exits 2 (script-level guard fires)');
