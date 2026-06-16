@@ -1,0 +1,123 @@
+# MetaHarness integration gates — ADR-150 Phase 1 MVP.
+#
+# Three jobs, all fast (subprocess invocations of `npx metaharness`):
+#   1. score              — fail if ruflo's own harnessFit drops below 70
+#   2. mcp-scan           — fail on any HIGH-severity MCP finding in ruflo
+#   3. router-compat      — exercise `@metaharness/router.Router` constructor;
+#                            catches breaking API changes before publish
+#
+# Triggers on changes that could move any of these signals:
+#   - the ruflo-metaharness plugin
+#   - the @metaharness/router optional dep version in v3/@claude-flow/cli
+#   - the v3 ruvector router-trajectory + neural-router source
+#   - this workflow file
+name: metaharness-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/ruflo-metaharness/**'
+      - 'v3/@claude-flow/cli/package.json'
+      - 'v3/@claude-flow/cli/src/ruvector/neural-router.ts'
+      - 'v3/@claude-flow/cli/src/ruvector/router-trajectory.ts'
+      - 'scripts/check-metaharness-compat.mjs'
+      - '.github/workflows/metaharness-ci.yml'
+  pull_request:
+    paths:
+      - 'plugins/ruflo-metaharness/**'
+      - 'v3/@claude-flow/cli/package.json'
+      - 'v3/@claude-flow/cli/src/ruvector/neural-router.ts'
+      - 'v3/@claude-flow/cli/src/ruvector/router-trajectory.ts'
+      - 'scripts/check-metaharness-compat.mjs'
+      - '.github/workflows/metaharness-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Plugin structural smoke
+        run: bash plugins/ruflo-metaharness/scripts/smoke.sh
+
+      - name: harness-score against ruflo (alert on harnessFit < 70)
+        run: |
+          node plugins/ruflo-metaharness/scripts/score.mjs \
+            --path . \
+            --alert-on-fit-below 70 \
+            --format json > /tmp/metaharness-score.json
+          cat /tmp/metaharness-score.json
+
+      - name: Upload score artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metaharness-score
+          path: /tmp/metaharness-score.json
+          retention-days: 30
+
+      - name: harness-genome against ruflo (alert on risk_score > 0.5)
+        run: |
+          node plugins/ruflo-metaharness/scripts/genome.mjs \
+            --path . \
+            --alert-on-risk-above 0.5 \
+            --format json > /tmp/metaharness-genome.json
+          cat /tmp/metaharness-genome.json
+
+      - name: Upload genome artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metaharness-genome
+          path: /tmp/metaharness-genome.json
+          retention-days: 30
+
+  mcp-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: harness mcp-scan against ruflo (fail on HIGH findings)
+        run: |
+          # Exit 0 on no/low-severity findings; exit 1 on HIGH.
+          # Exit 0 also when metaharness is unavailable — ADR-150
+          # graceful-degradation rule #3 lets ruflo continue without it.
+          node plugins/ruflo-metaharness/scripts/mcp-scan.mjs \
+            --path . \
+            --fail-on high \
+            --format json > /tmp/metaharness-mcp-scan.json
+          cat /tmp/metaharness-mcp-scan.json
+
+      - name: Upload mcp-scan artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metaharness-mcp-scan
+          path: /tmp/metaharness-mcp-scan.json
+          retention-days: 30
+
+  router-compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Compat check against current @metaharness/router pin
+        # Exercises the Router constructor, fromExamples factory, and
+        # routedBy field shape. If any of these change in @metaharness/
+        # router@0.4.x, this fails BEFORE we publish a ruflo release
+        # that would break neural-router.ts at runtime.
+        run: node scripts/check-metaharness-compat.mjs
