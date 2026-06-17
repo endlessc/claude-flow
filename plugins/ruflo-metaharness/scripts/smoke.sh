@@ -1502,8 +1502,14 @@ grep -q "iter-51-marker" "$F" 2>/dev/null || miss="$miss no-jaccard-mutation"
 grep -q "drift detected — verdict !== near-identical" "$F" 2>/dev/null || miss="$miss no-verdict-flip"
 grep -q "drift detected — distance > 0" "$F" 2>/dev/null || miss="$miss no-distance-positive"
 grep -q "drift alert at threshold" "$F" 2>/dev/null || miss="$miss no-drift-alert"
-# Runtime: 31/31 (was 25/25 pre-iter-51)
-node "$F" 2>&1 | grep -q "31 passed, 0 failed" || miss="$miss roundtrip-not-31"
+# Runtime: assertion count has grown as stages added (was 25→31→… → 66 at
+# iter 79). Smoke gates on "0 failed" with a passed count ≥ 31, not the
+# specific number — keeps the gate from breaking every time a new stage
+# adds assertions.
+ROUNDTRIP_OUT=$(node "$F" 2>&1)
+echo "$ROUNDTRIP_OUT" | grep -qE "^[0-9]+ passed, 0 failed$" || miss="$miss roundtrip-has-failures"
+ROUNDTRIP_COUNT=$(echo "$ROUNDTRIP_OUT" | grep -oE "^[0-9]+ passed" | grep -oE "[0-9]+" | head -1)
+[[ "${ROUNDTRIP_COUNT:-0}" -ge 31 ]] || miss="$miss roundtrip-count-regressed:$ROUNDTRIP_COUNT"
 [[ -z "$miss" ]] && ok || bad "$miss"
 
 step "17z13. mcp-scan findings parsed from text → audit-trend diff works (iter 50)"
@@ -1720,10 +1726,15 @@ node "$F" >/dev/null 2>&1 || miss="$miss unit-tests-fail"
 
 step "17z. ADR-152 §3.1 deep integration — oia-audit fingerprint + audit-trend structuralDistance (iter 38)"
 miss=""
-# oia-audit captures score + genome AND surfaces a fingerprint{score,genome}
+# oia-audit captures score + genome AND surfaces a fingerprint{score,genome}.
+# iter 56 refactored sequential runOne(...) → parallel
+# runMetaharnessAsync(['score'/'genome', path]); accept either form so smoke
+# survives the refactor.
 OIA="$ROOT/scripts/oia-audit.mjs"
-grep -q "score = runOne(\['score'" "$OIA" 2>/dev/null || miss="$miss no-score-capture"
-grep -q "genome = runOne(\['genome'" "$OIA" 2>/dev/null || miss="$miss no-genome-capture"
+grep -qE "score = runOne\\(\\['score'|runMetaharnessAsync\\(\\['score', path\\]\\)" "$OIA" 2>/dev/null \
+  || miss="$miss no-score-capture"
+grep -qE "genome = runOne\\(\\['genome'|runMetaharnessAsync\\(\\['genome', path\\]\\)" "$OIA" 2>/dev/null \
+  || miss="$miss no-genome-capture"
 grep -q "fingerprint: {" "$OIA" 2>/dev/null || miss="$miss no-fingerprint-field"
 # audit-trend imports the production similarity module and surfaces a verdict
 AT="$ROOT/scripts/audit-trend.mjs"
@@ -2075,8 +2086,10 @@ F="$ROOT/scripts/audit-trend.mjs"
 miss=""
 [[ -x "$F" ]] || miss="$miss not-executable"
 node --check "$F" 2>/dev/null || miss="$miss syntax-error"
-# Severity rank present + correct ordering
-grep -q "SEVERITY_RANK = { clean: 0, low: 1, medium: 2, high: 3 }" "$F" || miss="$miss no-severity-rank"
+# Severity rank present + correct ordering — iter 63 refactored to shared
+# SEVERITY_RANK from _harness.mjs; accept either the import OR the literal.
+grep -qE "SEVERITY_RANK.*from.*_harness|SEVERITY_RANK = \{ clean: 0, low: 1, medium: 2, high: 3 \}" "$F" \
+  || miss="$miss no-severity-rank"
 # Both file-input AND memory-key-input paths
 grep -q "baseline-key\|baselineKey" "$F" || miss="$miss no-mem-key-input"
 grep -q "current-key\|currentKey" "$F" || miss="$miss no-current-key"

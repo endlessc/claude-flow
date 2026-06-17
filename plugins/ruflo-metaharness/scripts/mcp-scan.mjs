@@ -53,13 +53,24 @@ function main() {
   // diff actually works. If a future upstream version DOES emit
   // findings[], the parsed-text findings are overridden.
   const parsed = parseMcpScanText(r.stdout);
+  // iter 124 — normalize finding shape so consumers see a stable contract.
+  // Upstream metaharness@0.1.x JSON path emits {id, severity, title, detail};
+  // our parseMcpScanText emits {severity, message}. Project both into a
+  // unified {severity, message, title?, detail?} so audit-trend's fingerprint
+  // diff and test-mcp-tools' assertions don't care which path produced them.
+  const rawFindings = Array.isArray(r.json?.findings) ? r.json.findings : parsed.findings;
+  const findings = rawFindings.map((f) => ({
+    ...f,
+    message: typeof f.message === 'string' && f.message
+      ? f.message
+      : (f.title || f.detail || ''),
+  }));
   const payload = {
     ...(r.json ?? {}),
-    findings: Array.isArray(r.json?.findings) ? r.json.findings : parsed.findings,
+    findings,
     summary: r.json?.summary ?? parsed.summary,
     rawStdout: r.stdout.slice(0, 400),
   };
-  const findings = payload.findings;
   const threshold = SEVERITY_RANK[ARGS.failOn];
   // iter 63 — rankSeverity() safe lookup. Pre-iter-63 `undefined >= 3`
   // was false → unknown-severity findings (e.g., warn / error) were
