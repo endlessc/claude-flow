@@ -191,6 +191,17 @@ grep -q "execCli(\[\s*'-y'\s*,\s*'metaharness@latest'" "$F" 2>/dev/null || \
 grep -q "cwd: opts" "$F" || miss="$miss no-cwd-passthrough"
 [[ -z "$miss" ]] && ok || bad "$miss"
 
+step "17z71. weekly cron drift step fails on slow-path regression (iter 108)"
+miss=""
+W="$ROOT/../../.github/workflows/oia-audit-weekly.yml"
+# iter-108 hard-fails the workflow if cron accidentally drops --baseline-file
+grep -q 'PATH_LABEL=' "$W" 2>/dev/null || miss="$miss no-path-label-var"
+grep -q "timing?.path || 'unknown'" "$W" 2>/dev/null || miss="$miss no-path-extraction"
+grep -q 'if \[ "\$PATH_LABEL" != "file" \]' "$W" 2>/dev/null || miss="$miss no-path-assertion"
+grep -q "iter-67 fastpath flag may have regressed" "$W" 2>/dev/null || miss="$miss no-error-message"
+grep -q "::error::Cron drift step" "$W" 2>/dev/null || miss="$miss no-gh-error-annotation"
+[[ -z "$miss" ]] && ok || bad "$miss"
+
 step "17z70. ADR-152 cross-references resolve + ADR-151 scope-refs documented (iter 107)"
 miss=""
 ADR_DIR="$ROOT/../../v3/docs/adr"

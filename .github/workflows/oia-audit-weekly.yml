@@ -146,6 +146,19 @@ jobs:
           echo "## Drift vs prior week: \`$VERDICT\` (similarity=$OVERALL)" >> $GITHUB_STEP_SUMMARY
           echo "Alert status: \`$ALERT\`" >> $GITHUB_STEP_SUMMARY
           echo "Path: \`$PATH_TAKEN\`" >> $GITHUB_STEP_SUMMARY
+          # iter 108 — fail the workflow if the cron accidentally fell
+          # through to the slow path. The cron's --baseline-file flag
+          # is the load-bearing invariant for cron-budget correctness;
+          # if it disappears, the audit takes ~26s instead of ~1.4s
+          # and the iter-7 weekly-cron budget exhausts on slower runners.
+          PATH_LABEL=$(node -e "
+            const j = JSON.parse(require('fs').readFileSync('/tmp/drift-trend.json'));
+            console.log(j.timing?.path || 'unknown');
+          ")
+          if [ "$PATH_LABEL" != "file" ]; then
+            echo "::error::Cron drift step expected timing.path='file' but got '$PATH_LABEL' — the iter-67 fastpath flag may have regressed"
+            exit 1
+          fi
 
       - name: Upload drift trend artifact
         # iter 70 — same always() pattern; the trend artifact is most
